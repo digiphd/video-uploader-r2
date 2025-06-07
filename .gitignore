@@ -6,7 +6,7 @@ yarn-error.log*
 
 # dotenv environment variables
 .env
-.env.*
+.env.local
 
 # Vercel
 .vercel/
@@ -50,3 +50,4 @@ coverage/
 *.pid
 *.seed
 *.pid.lock
+.vercel

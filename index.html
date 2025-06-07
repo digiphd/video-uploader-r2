@@ -66,7 +66,7 @@
             </div>
 
             <!-- File Input -->
-            <input type="file" id="fileInput" accept="video/*" class="hidden">
+            <input type="file" id="fileInput" accept="video/*" class="hidden" multiple>
 
             <!-- Action Button -->
             <button id="uploadBtn" class="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 px-6 rounded-lg font-medium hover:from-blue-700 hover:to-purple-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed" disabled>
@@ -130,7 +130,7 @@
         const progressText = document.getElementById('progressText');
         const statusMessage = document.getElementById('statusMessage');
 
-        let selectedFile = null;
+        let selectedFiles = [];
 
         // File size formatter
         function formatFileSize(bytes) {
@@ -162,73 +162,103 @@
         }
 
         // Handle file selection
-        function handleFileSelect(file) {
-            // Validate file type
-            if (!file.type.startsWith('video/')) {
-                showStatus('Please select a valid video file.', 'error');
+        function handleFileSelect(files) {
+            selectedFiles = Array.from(files).filter(file => file.type.startsWith('video/'));
+            if (selectedFiles.length === 0) {
+                showStatus('Please select at least one valid video file.', 'error');
                 return;
             }
-
-            // Validate file size (5GB = 5 * 1024 * 1024 * 1024 bytes)
-            const maxSize = 5 * 1024 * 1024 * 1024;
-            if (file.size > maxSize) {
-                showStatus('File size exceeds 5GB limit. Please select a smaller file.', 'error');
-                return;
-            }
-
-            selectedFile = file;
-            fileName.textContent = file.name;
-            fileSize.textContent = formatFileSize(file.size);
-            
+            // Show first file info for now
+            fileName.textContent = selectedFiles[0].name + (selectedFiles.length > 1 ? ` (+${selectedFiles.length-1} more)` : '');
+            fileSize.textContent = formatFileSize(selectedFiles.reduce((acc, f) => acc + f.size, 0));
             uploadContent.classList.add('hidden');
             uploadProgress.classList.remove('hidden');
             uploadBtn.disabled = false;
-            
-            showStatus('Video selected successfully! Ready to upload and queue.', 'success');
+            showStatus(`${selectedFiles.length} video${selectedFiles.length > 1 ? 's' : ''} selected! Ready to upload and queue.`, 'success');
+        }
+
+        // Helper: Extract video metadata from a File object
+        function getVideoMetadata(file) {
+            return new Promise((resolve, reject) => {
+                const video = document.createElement('video');
+                video.preload = 'metadata';
+                video.muted = true;
+                video.playsInline = true;
+                video.onloadedmetadata = function () {
+                    resolve({
+                        duration: video.duration,
+                        width: video.videoWidth,
+                        height: video.videoHeight
+                    });
+                    URL.revokeObjectURL(video.src);
+                };
+                video.onerror = function () {
+                    resolve({ duration: null, width: null, height: null });
+                    URL.revokeObjectURL(video.src);
+                };
+                video.src = URL.createObjectURL(file);
+            });
         }
 
         // Upload file to R2 and trigger webhook
         async function uploadFile() {
-            if (!selectedFile) return;
-
+            if (!selectedFiles || selectedFiles.length === 0) return;
             uploadBtn.disabled = true;
             uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Uploading...';
-
-            try {
-                // 1. Get presigned URL from Vercel API
-                showStatus('Requesting upload URL...', 'info');
-                const presignRes = await fetch('/api/generate-presigned-url', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ fileName: selectedFile.name, fileType: selectedFile.type })
-                });
-                if (!presignRes.ok) throw new Error('Failed to get upload URL');
-                const { url } = await presignRes.json();
-
-                // 2. Upload file to R2 using the presigned URL
-                showStatus('Uploading to cloud storage...', 'info');
-                const uploadRes = await fetch(url, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': selectedFile.type },
-                    body: selectedFile
-                });
-                if (!uploadRes.ok) throw new Error('Upload to R2 failed');
-
-                progressBar.style.width = '100%';
-                progressText.textContent = '100%';
-
-                // 3. Trigger webhook (URL is set in your Vercel env vars)
-                showStatus('Triggering social media distribution pipeline...', 'info');
-                await fetch('/api/trigger-webhook', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ fileName: selectedFile.name, fileType: selectedFile.type })
-                });
-
-                showStatus('Success! Your video has been queued for distribution across your social media platforms.', 'success');
+            const API_KEY = 'REPLACE_WITH_YOUR_API_KEY'; // <-- Set this in production
+            let completed = 0;
+            for (let i = 0; i < selectedFiles.length; i++) {
+                const file = selectedFiles[i];
+                try {
+                    // Extract metadata before upload
+                    showStatus(`Extracting metadata for ${file.name}...`, 'info');
+                    const meta = await getVideoMetadata(file);
+                    showStatus(`Requesting upload URL for ${file.name}...`, 'info');
+                    const presignRes = await fetch('/api/generate-presigned-url', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'x-api-key': API_KEY
+                        },
+                        body: JSON.stringify({ fileName: file.name, fileType: file.type })
+                    });
+                    if (!presignRes.ok) throw new Error('Failed to get upload URL');
+                    const { url } = await presignRes.json();
+                    showStatus(`Uploading ${file.name} to cloud storage...`, 'info');
+                    const uploadRes = await fetch(url, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': file.type },
+                        body: file
+                    });
+                    if (!uploadRes.ok) throw new Error('Upload to R2 failed');
+                    // Trigger webhook with metadata
+                    showStatus(`Triggering pipeline for ${file.name}...`, 'info');
+                    await fetch('/api/trigger-webhook', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'x-api-key': API_KEY
+                        },
+                        body: JSON.stringify({
+                            fileName: file.name,
+                            fileType: file.type,
+                            fileSize: file.size,
+                            duration: meta.duration,
+                            width: meta.width,
+                            height: meta.height
+                        })
+                    });
+                    completed++;
+                    progressBar.style.width = `${Math.round((completed/selectedFiles.length)*100)}%`;
+                    progressText.textContent = `${Math.round((completed/selectedFiles.length)*100)}%`;
+                } catch (error) {
+                    showStatus(`Upload failed for ${file.name}: ${error.message}`, 'error');
+                }
+            }
+            if (completed === selectedFiles.length) {
+                showStatus('All videos have been queued for distribution.', 'success');
                 setTimeout(() => { resetForm(); }, 3000);
-            } catch (error) {
-                showStatus('Upload failed. Please try again. ' + error.message, 'error');
+            } else {
                 uploadBtn.disabled = false;
                 uploadBtn.innerHTML = '<i class="fas fa-rocket mr-2"></i>Upload and Queue on Social Media';
             }
@@ -236,7 +266,7 @@
 
         // Reset form
         function resetForm() {
-            selectedFile = null;
+            selectedFiles = [];
             fileInput.value = '';
             uploadContent.classList.remove('hidden');
             uploadProgress.classList.add('hidden');
@@ -249,15 +279,14 @@
 
         // Event Listeners
         uploadArea.addEventListener('click', () => {
-            if (!selectedFile) {
+            if (selectedFiles.length === 0) {
                 fileInput.click();
             }
         });
 
         fileInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                handleFileSelect(file);
+            if (e.target.files.length > 0) {
+                handleFileSelect(e.target.files);
             }
         });
 
@@ -276,10 +305,8 @@
         uploadArea.addEventListener('drop', (e) => {
             e.preventDefault();
             uploadArea.classList.remove('dragover');
-            
-            const files = e.dataTransfer.files;
-            if (files.length > 0) {
-                handleFileSelect(files[0]);
+            if (e.dataTransfer.files.length > 0) {
+                handleFileSelect(e.dataTransfer.files);
             }
         });
 
