@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video to Social Media</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+    <style>
+        .upload-area {
+            transition: all 0.3s ease;
+        }
+        .upload-area:hover {
+            transform: translateY(-2px);
+        }
+        .upload-area.dragover {
+            background-color: #dbeafe;
+            border-color: #3b82f6;
+        }
+        .progress-bar {
+            transition: width 0.3s ease;
+        }
+        @media (max-width: 640px) {
+            .upload-area {
+                min-height: 200px;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="container mx-auto px-4 py-8 max-w-md">
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <div class="mb-4">
+                <i class="fas fa-share-alt text-4xl text-blue-600"></i>
+            </div>
+            <h1 class="text-3xl font-bold text-gray-900 mb-2">Video to Social Media</h1>
+            <p class="text-gray-600">Upload videos directly to queue your videos on social media platforms</p>
+        </div>
+
+        <!-- Upload Form -->
+        <div class="bg-white rounded-lg shadow-lg p-6">
+            <!-- Upload Area -->
+            <div id="uploadArea" class="upload-area border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer mb-6">
+                <div id="uploadContent">
+                    <i class="fas fa-cloud-upload-alt text-4xl text-gray-400 mb-4"></i>
+                    <p class="text-lg font-medium text-gray-700 mb-2">Choose video or drag & drop</p>
+                    <p class="text-sm text-gray-500 mb-4">Support for videos up to 5GB</p>
+                    <button type="button" class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                        <i class="fas fa-plus mr-2"></i>Select Video
+                    </button>
+                </div>
+                
+                <!-- Upload Progress -->
+                <div id="uploadProgress" class="hidden">
+                    <div class="mb-4">
+                        <i class="fas fa-video text-4xl text-blue-600 mb-2"></i>
+                        <p id="fileName" class="text-lg font-medium text-gray-700 mb-2"></p>
+                        <p id="fileSize" class="text-sm text-gray-500 mb-4"></p>
+                    </div>
+                    <div class="bg-gray-200 rounded-full h-3 mb-2">
+                        <div id="progressBar" class="progress-bar bg-blue-600 h-3 rounded-full" style="width: 0%"></div>
+                    </div>
+                    <p id="progressText" class="text-sm text-gray-600">0%</p>
+                </div>
+            </div>
+
+            <!-- File Input -->
+            <input type="file" id="fileInput" accept="video/*" class="hidden">
+
+            <!-- Action Button -->
+            <button id="uploadBtn" class="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 px-6 rounded-lg font-medium hover:from-blue-700 hover:to-purple-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                <i class="fas fa-rocket mr-2"></i>Upload and Queue on Social Media
+            </button>
+
+            <!-- Status Messages -->
+            <div id="statusMessage" class="mt-4 hidden"></div>
+        </div>
+
+        <!-- Features -->
+        <div class="mt-8 grid grid-cols-1 gap-4">
+            <div class="bg-white rounded-lg p-4 shadow">
+                <div class="flex items-center">
+                    <i class="fas fa-lightning-bolt text-yellow-500 text-xl mr-3"></i>
+                    <div>
+                        <h3 class="font-medium text-gray-900">Instant Upload</h3>
+                        <p class="text-sm text-gray-600">Direct upload to cloud storage</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-lg p-4 shadow">
+                <div class="flex items-center">
+                    <i class="fas fa-share-alt-square text-blue-500 text-xl mr-3"></i>
+                    <div>
+                        <h3 class="font-medium text-gray-900">Auto Distribution</h3>
+                        <p class="text-sm text-gray-600">Queue across multiple platforms</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-lg p-4 shadow">
+                <div class="flex items-center">
+                    <i class="fas fa-mobile-alt text-green-500 text-xl mr-3"></i>
+                    <div>
+                        <h3 class="font-medium text-gray-900">Mobile Friendly</h3>
+                        <p class="text-sm text-gray-600">Upload directly from your phone</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="mt-8 text-center text-sm text-gray-500">
+            <p>Supported formats: MP4, MOV, AVI, MKV</p>
+            <p class="mt-1">Maximum file size: 5GB</p>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const uploadContent = document.getElementById('uploadContent');
+        const uploadProgress = document.getElementById('uploadProgress');
+        const fileName = document.getElementById('fileName');
+        const fileSize = document.getElementById('fileSize');
+        const progressBar = document.getElementById('progressBar');
+        const progressText = document.getElementById('progressText');
+        const statusMessage = document.getElementById('statusMessage');
+
+        let selectedFile = null;
+
+        // File size formatter
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // Show status message
+        function showStatus(message, type = 'info') {
+            statusMessage.className = `mt-4 p-4 rounded-lg ${
+                type === 'success' ? 'bg-green-100 text-green-800 border border-green-200' :
+                type === 'error' ? 'bg-red-100 text-red-800 border border-red-200' :
+                'bg-blue-100 text-blue-800 border border-blue-200'
+            }`;
+            statusMessage.innerHTML = `
+                <div class="flex items-center">
+                    <i class="fas ${
+                        type === 'success' ? 'fa-check-circle' :
+                        type === 'error' ? 'fa-exclamation-circle' :
+                        'fa-info-circle'
+                    } mr-2"></i>
+                    ${message}
+                </div>
+            `;
+            statusMessage.classList.remove('hidden');
+        }
+
+        // Handle file selection
+        function handleFileSelect(file) {
+            // Validate file type
+            if (!file.type.startsWith('video/')) {
+                showStatus('Please select a valid video file.', 'error');
+                return;
+            }
+
+            // Validate file size (5GB = 5 * 1024 * 1024 * 1024 bytes)
+            const maxSize = 5 * 1024 * 1024 * 1024;
+            if (file.size > maxSize) {
+                showStatus('File size exceeds 5GB limit. Please select a smaller file.', 'error');
+                return;
+            }
+
+            selectedFile = file;
+            fileName.textContent = file.name;
+            fileSize.textContent = formatFileSize(file.size);
+            
+            uploadContent.classList.add('hidden');
+            uploadProgress.classList.remove('hidden');
+            uploadBtn.disabled = false;
+            
+            showStatus('Video selected successfully! Ready to upload and queue.', 'success');
+        }
+
+        // Upload file to R2 and trigger webhook
+        async function uploadFile() {
+            if (!selectedFile) return;
+
+            uploadBtn.disabled = true;
+            uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Uploading...';
+
+            try {
+                // 1. Get presigned URL from Vercel API
+                showStatus('Requesting upload URL...', 'info');
+                const presignRes = await fetch('/api/generate-presigned-url', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ fileName: selectedFile.name, fileType: selectedFile.type })
+                });
+                if (!presignRes.ok) throw new Error('Failed to get upload URL');
+                const { url } = await presignRes.json();
+
+                // 2. Upload file to R2 using the presigned URL
+                showStatus('Uploading to cloud storage...', 'info');
+                const uploadRes = await fetch(url, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': selectedFile.type },
+                    body: selectedFile
+                });
+                if (!uploadRes.ok) throw new Error('Upload to R2 failed');
+
+                progressBar.style.width = '100%';
+                progressText.textContent = '100%';
+
+                // 3. Trigger webhook (URL is set in your Vercel env vars)
+                showStatus('Triggering social media distribution pipeline...', 'info');
+                await fetch('/api/trigger-webhook', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ fileName: selectedFile.name, fileType: selectedFile.type })
+                });
+
+                showStatus('Success! Your video has been queued for distribution across your social media platforms.', 'success');
+                setTimeout(() => { resetForm(); }, 3000);
+            } catch (error) {
+                showStatus('Upload failed. Please try again. ' + error.message, 'error');
+                uploadBtn.disabled = false;
+                uploadBtn.innerHTML = '<i class="fas fa-rocket mr-2"></i>Upload and Queue on Social Media';
+            }
+        }
+
+        // Reset form
+        function resetForm() {
+            selectedFile = null;
+            fileInput.value = '';
+            uploadContent.classList.remove('hidden');
+            uploadProgress.classList.add('hidden');
+            uploadBtn.disabled = true;
+            uploadBtn.innerHTML = '<i class="fas fa-rocket mr-2"></i>Upload and Queue on Social Media';
+            progressBar.style.width = '0%';
+            progressText.textContent = '0%';
+            statusMessage.classList.add('hidden');
+        }
+
+        // Event Listeners
+        uploadArea.addEventListener('click', () => {
+            if (!selectedFile) {
+                fileInput.click();
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                handleFileSelect(file);
+            }
+        });
+
+        uploadBtn.addEventListener('click', uploadFile);
+
+        // Drag and drop functionality
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFileSelect(files[0]);
+            }
+        });
+
+        // Prevent default drag behaviors
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            document.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+            });
+        });
+    </script>
+</body>
+</html>
