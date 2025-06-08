@@ -4,8 +4,18 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 export default async function handler(req, res) {
   // API key authentication
 
+  // Log incoming request and env vars for debugging
+  console.log('trigger-webhook: incoming request', JSON.stringify(req.body));
+  console.log('trigger-webhook: env', {
+    R2_ENDPOINT: process.env.R2_ENDPOINT,
+    R2_BUCKET: process.env.R2_BUCKET,
+    R2_ACCESS_KEY_ID: !!process.env.R2_ACCESS_KEY_ID,
+    R2_SECRET_ACCESS_KEY: !!process.env.R2_SECRET_ACCESS_KEY,
+    WEBHOOK_URL: process.env.WEBHOOK_URL,
+  });
 
   if (req.method !== "POST") {
+    console.error('trigger-webhook: method not allowed');
     return res.status(405).json({ error: "Method not allowed" });
   }
 
@@ -13,6 +23,7 @@ export default async function handler(req, res) {
   const webhookUrl = process.env.WEBHOOK_URL;
 
   if (!webhookUrl) {
+    console.error('trigger-webhook: WEBHOOK_URL not configured');
     return res.status(500).json({ error: "Webhook URL not configured" });
   }
 
@@ -36,23 +47,28 @@ export default async function handler(req, res) {
       Key: fileName,
     });
     presignedGetUrl = await getSignedUrl(client, getCommand, { expiresIn: 1800 }); // 30 min
+    console.log('trigger-webhook: presignedGetUrl generated');
   } catch (err) {
-    // If presigned URL fails, continue but log error
+    console.error('trigger-webhook: failed to generate presignedGetUrl', err);
     presignedGetUrl = null;
   }
 
   try {
     const videoMetadata = { fileName, fileType, fileSize, duration, width, height, r2Url, presignedGetUrl };
+    console.log('trigger-webhook: sending to webhook', { webhookUrl, videoMetadata });
     const webhookRes = await fetch(webhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ videoMetadata })
     });
     if (!webhookRes.ok) {
-      throw new Error("Webhook call failed");
+      const text = await webhookRes.text();
+      console.error('trigger-webhook: webhook call failed', text);
+      throw new Error("Webhook call failed: " + text);
     }
     res.status(200).json({ success: true });
   } catch (error) {
+    console.error('trigger-webhook: error', error);
     res.status(500).json({ error: error.message });
   }
 }
