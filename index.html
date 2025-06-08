@@ -287,6 +287,8 @@
         fileInput.addEventListener('change', (e) => {
             if (e.target.files.length > 0) {
                 handleFileSelect(e.target.files);
+                // Automatically start upload after selection
+                uploadFile();
             }
         });
 
@@ -307,6 +309,8 @@
             uploadArea.classList.remove('dragover');
             if (e.dataTransfer.files.length > 0) {
                 handleFileSelect(e.dataTransfer.files);
+                // Automatically start upload after drop
+                uploadFile();
             }
         });
 
